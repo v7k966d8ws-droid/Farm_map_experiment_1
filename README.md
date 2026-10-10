@@ -1,9 +1,9 @@
-DD Produce — Tavasci Planting Map — Build 7
-
-Upload index.html and tavasci-map.jpg to the root of the existing GitHub Pages repository.
-
-New: Grid calibration mode for mouse and touch, three draggable handles, 1-pixel fine-adjust buttons, Show Grid, Save & Lock, Cancel, Reset.
-
-Calibration uses a separate localStorage key (dd-tavasci-grid-calibration-v1), independent of the existing planting records. It is device/browser local; calibrate again on other devices if needed. Export a planting backup before updating.
-
-Calibration maps the planting grid as a parallelogram (three-point affine transform), not an arbitrary four-corner perspective correction. Verify alignment at all four corners before saving.
+Tavasci Planting Map — Build 7.1
+- Toggle 6-row group mode to select six groups across each 36-row strip.
+- Three 12-row bays, each two six-row groups; visual tractor gaps.
+- Existing whole-strip records are preserved; overlapping group/full-strip edits blocked.
+- Save & Lock calibration verified and backed up locally; export includes calibration.
+- Length splits retained.
+- Upload index.html to GitHub Pages (same image as Build 7).
+- Back up planting records before replacing any files.
+Note: this build has not been browser-tested on iPad. Please test with sample records first.
