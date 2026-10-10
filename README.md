@@ -1,11 +1,7 @@
-# Tavasci Planting Map — Experimental Build 1
+Tavasci Planting Map – Experimental Build 2
 
-Static iPad-friendly prototype for GitHub Pages. Tavasci outlets 1–8 each have two selectable adjacent 36-row sections (72 rows total). Tap an area to enter transplant date, variety, trays, and notes. Saved sections are highlighted and labeled on the original map.
+Upload index.html and tavasci-map.jpg to GitHub Pages root.
 
-## Deploy
-Upload `index.html` and `tavasci-map.jpg` to the root of a new GitHub repository. Go to Settings → Pages → Deploy from a branch → `main` → `/ (root)` → Save. Open the published GitHub Pages address in Safari.
+Tap one of 16 36-row strips. Full-length by default; split each strip length into 2, 4, or 8 sections. Tap the relevant map area and save planting date, variety, trays and notes.
 
-## Important
-- Records are saved in browser localStorage, **not** GitHub or other devices. Export JSON backups regularly.
-- Overlay boundaries are an initial visual approximation, not surveyed row coordinates. Verify alignment on the farm map before operational use.
-- Tavasci 9 and 10 are intentionally excluded from this first test.
+Existing Build 1 records on the same browser are read automatically if no Build 2 records exist. Back up before testing. A strip with records cannot be resplit until records are cleared, to prevent misallocation. Records remain local to the browser.
