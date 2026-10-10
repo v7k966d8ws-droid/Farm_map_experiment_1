@@ -1,5 +1,5 @@
-# Tavasci Planting Map — Experimental Build 4
+# Tavasci Planting Map — Experimental Build 6
 
-Upload `index.html` and `tavasci-map.jpg` to the root of your GitHub Pages repository. The app preserves existing Build 3 records using the same browser storage key. Export a backup before replacing files.
+Thicker black external outlines and labels positioned inside a fully planted rectangle, away from adjacent variety boundaries. All planting selection and storage logic retained.
 
-New: variety-specific colour/pattern fills, variety legend, and visually continuous sections for adjacent parts of the same saved planting operation (including 'Select rest of strip'). Individual areas remain selectable for later edits. All data remains local to the browser.
+Upload index.html and tavasci-map.jpg to your GitHub repository. Export a backup before updating.
