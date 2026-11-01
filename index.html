@@ -40,7 +40,7 @@
 .length-handle .grip{font-size:18px}
 .segment.partial{background:transparent!important}
 
-/* Build 7.5.2: restrained iPadOS-inspired layout, without altering the original field map */
+/* Build 7.5.3: restrained iPadOS-inspired layout, without altering the original field map */
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
 body{background:#f3f5f9;color:#17212c}
 header{background:#fff!important;color:#17212c!important;border-bottom:1px solid #dce2e9;box-shadow:none!important;padding:14px 22px!important}
@@ -69,7 +69,11 @@ input,textarea{border-radius:11px!important;min-height:44px}
 .pending-length-fill{position:absolute;left:0;right:0;background:#1689f7bb;border-top:3px solid #005bd4;border-bottom:3px solid #005bd4;pointer-events:none;z-index:3}
 #lengthEditor{margin:8px 0 12px}
 #lengthEditor .splitrow button{min-height:44px}
-</style></head><body><header><strong>🌱 DD Produce</strong><span class="tag">Tavasci Farm · Build 7.5.2</span></header>
+
+/* Individual hit targets for separate crops and remaining unplanted lengths */
+.segment .fraction-hit{position:absolute;left:0;width:100%;min-height:0;border:0;border-top:2px solid #286044;border-bottom:2px solid #286044;border-radius:0;padding:0;cursor:pointer;z-index:4;touch-action:manipulation}
+.segment .fraction-hit:focus-visible{outline:3px solid #006ff0!important;outline-offset:-3px}
+</style></head><body><header><strong>🌱 DD Produce</strong><span class="tag">Tavasci Farm · Build 7.5.3</span></header>
 <div class="app-shell"><nav class="app-nav" aria-label="Tavasci navigation"><div class="nav-title">Tavasci</div><div class="nav-active">▦ &nbsp; Planting Map</div><div class="nav-caption">Irrigation integration planned</div><div class="nav-caption">Planting records are managed on this map</div></nav><main class="layout"><section class="card"><div class="toolbar"><h2>Tavasci farm map</h2><small>Tap multiple sections to record one planting operation</small></div><div class="cal-row"><button type="button" id="calToggle">⚙ Calibrate grid</button><button type="button" id="showGrid">Show grid: Off</button></div><div id="calibrationPanel"><b>Align planting grid with printed map</b><p class="cal-help">Drag the three orange handles to match the top-left, top-right and bottom-left of the 16-strip grid. The bottom-right corner follows automatically. On Windows, use the mouse; on iPad, drag with your finger. Use the fine adjustment buttons for precision. Save to lock the grid.</p><div class="cal-row"><button type="button" data-anchor="tl">Top left</button><button type="button" data-anchor="tr">Top right</button><button type="button" data-anchor="bl">Bottom left</button></div><div class="cal-row"><button type="button" data-nudge="left">← 1px</button><button type="button" data-nudge="right">1px →</button><button type="button" data-nudge="up">↑ 1px</button><button type="button" data-nudge="down">1px ↓</button></div><div class="cal-row"><button type="button" id="calSave" class="primary">Save & lock</button><button type="button" id="calCancel">Cancel</button><button type="button" id="calReset">Reset alignment</button></div><div class="cal-help" id="calStatus"></div></div><div class="map-length-toolbar" id="mapLengthToolbar"><button type="button" id="lengthOpen" disabled>↕ Adjust planting length</button><span id="mapLengthStatus" role="status">Select a 36-row strip to adjust its length.</span></div><div id="lengthEditor" class="length-editor" hidden>
   <b>Adjust planting length</b>
   <p class="muted">Drag the two wide handles on the selected strip. Top is the railway end; bottom is McLaughlin Road.</p>
@@ -114,14 +118,59 @@ data.boundaries=data.boundaries||{};
 pendingRanges={...data.boundaries};
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 function keyGeometry(key){
- const m=/^(\d+)([AB])(?::(\d+):(\d+))?$/.exec(key);
+ const m=/^(\d+)([AB])(?::(\d+):(\d+))?(?:@(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?))?$/.exec(key);
  if(!m)return null;
  const col=(+m[1]-1)*2+(m[2]==='B'?1:0),n=+(m[3]||1),part=+(m[4]||0);
- return {col,low:100*part/n,high:100*(part+1)/n};
+ return {col,low:m[5]!==undefined?+m[5]:100*part/n,high:m[6]!==undefined?+m[6]:100*(part+1)/n};
 }
 function areaRange(op,key){const g=keyGeometry(key);if(!g)return [0,100];
  const v=op?.ranges?.[key];return Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)?[clamp(v[0],g.low,g.high),clamp(v[1],g.low,g.high)]:[g.low,g.high];}
 
+// 7.5.3: make saved fractional planting areas independent selectable regions.
+// Existing records are migrated in place, without losing crop information.
+const fmtPct=n=>String(Math.round(n*100)/100);
+const sliceKey=(base,a,b)=>base+'@'+fmtPct(a)+'-'+fmtPct(b);
+const baseKey=k=>k.split('@')[0];
+function normalizeFractionalAreas(){
+ let changed=false;
+ for(const op of Object.values(data.operations)){
+  op.ranges=op.ranges||{};
+  op.areas=(op.areas||[]).map(k=>{
+   if(k.includes('@')||k.includes('~'))return k;
+   const g=keyGeometry(k),r=op.ranges[k];
+   if(!g||!Array.isArray(r)||r.length!==2||!(r[0]>g.low||r[1]<g.high))return k;
+   const nk=sliceKey(k,r[0],r[1]);op.ranges[nk]=r;delete op.ranges[k];changed=true;return nk;
+  });
+ }
+ for(const [k,r] of Object.entries(data.boundaries)){
+  if(k.includes('@')||!Array.isArray(r))continue;
+  const g=keyGeometry(k);if(!g)continue;
+  const nk=sliceKey(k,r[0],r[1]);data.boundaries[nk]=r;delete data.boundaries[k];changed=true;
+ }
+ if(changed)pendingRanges={...data.boundaries};
+ return changed;
+}
+function slicesFor(base){
+ const g=keyGeometry(base);if(!g)return [];
+ const edges=[g.low,g.high],items=[];
+ for(const op of Object.values(data.operations))for(const key of op.areas||[]){
+  if(baseKey(key)!==base||!key.includes('@'))continue;
+  const r=areaRange(op,key);items.push({key,start:r[0],end:r[1],record:true});edges.push(...r);
+ }
+ for(const [key,r] of Object.entries(data.boundaries)){
+  if(baseKey(key)!==base||!key.includes('@')||!Array.isArray(r))continue;
+  items.push({key,start:r[0],end:r[1],pending:true});edges.push(...r);
+ }
+ if(!items.length)return [];
+ const ordered=[...new Set(edges.map(x=>Math.round(x*100)/100))].sort((a,b)=>a-b);
+ const result=[];
+ for(let i=0;i<ordered.length-1;i++){
+  const a=ordered[i],b=ordered[i+1];if(b-a<.01)continue;
+  const item=items.find(t=>t.start<=a+.01&&t.end>=b-.01);
+  result.push({key:item&&Math.abs(item.start-a)<.01&&Math.abs(item.end-b)<.01?item.key:sliceKey(base,a,b),start:a,end:b,record:item?.record,pending:item?.pending});
+ }
+ return result;
+}
 const strip=(outlet,side)=>`${outlet}${side}`;
 const splitCount=id=>Number(data.splits[id]||1);
 const recKey=(id,part,n)=>n===1?id:`${id}:${n}:${part}`;
@@ -283,6 +332,24 @@ if(pendingRanges[key]&&!r&&!sixMode){
   b.appendChild(fill);
  }
 }
+if(!sixMode){
+ const pieces=slicesFor(key);
+ if(pieces.length){
+  b.style.background='transparent';
+  b.innerHTML='';
+  for(const piece of pieces){
+   const hit=document.createElement('button');hit.type='button';hit.className='fraction-hit';
+   hit.style.top=(100*(piece.start-keyGeometry(key).low)/(keyGeometry(key).high-keyGeometry(key).low))+'%';
+   hit.style.height=(100*(piece.end-piece.start)/(keyGeometry(key).high-keyGeometry(key).low))+'%';
+   hit.style.background=selected.has(piece.key)?'#1689f7a3':piece.record?varietyStyle(opFor(piece.key)[1].variety):piece.pending?'#1689f73d':'#e9d9a04d';
+   hit.style.outline=selected.has(piece.key)?'3px solid #087cdb':'';
+   hit.setAttribute('aria-label','Tavasci outlet '+id.replace(/[AB]$/,'')+' '+fmtPct(piece.start)+' to '+fmtPct(piece.end)+' percent'+(piece.record?' planted':' unplanted'));
+   hit.setAttribute('aria-pressed',selected.has(piece.key));
+   hit.onclick=e=>{e.stopPropagation();toggle(id,piece.key);render()};
+   b.appendChild(hit);
+  }
+ }
+}
 if(sixMode){
  b.classList.remove('planted','active');
  b.style.background='';
@@ -300,7 +367,7 @@ if(sixMode){
  b.onclick=null;
  }else{
   if(sixChildren(key).some(k=>opFor(k)))b.title='Contains six-row plantings; switch to six-row mode to edit';
-  b.onclick=()=>{if(conflictFor(key)){alert('This section contains six-row planting records. Use six-row mode to edit them.');return}toggle(id,key)};
+  b.onclick=()=>{if(slicesFor(key).length)return;if(conflictFor(key)){alert('This section contains six-row planting records. Use six-row mode to edit them.');return}toggle(id,key)};
  }
  col.appendChild(b);previousOp=opid||null}zones.appendChild(col)}renderPlantOverlay();renderOutletLabels();applyCalibration();drawLengthEditor();renderVarietyLegend();let operations=Object.values(data.operations);$('count').textContent=operations.reduce((n,o)=>n+o.areas.length,0)+' / '+Array.from({length:8},(_,i)=>['A','B'].map(side=>splitCount(strip(i+1,side))).reduce((a,b)=>a+b,0)).reduce((a,b)=>a+b,0);$('total').textContent=operations.reduce((n,o)=>n+(Number(o.trays)||0),0).toLocaleString();$('operations').textContent=operations.length;updateSelection()}
 function renderSplits(){let el=$('splitControls');el.innerHTML='';for(let n of [1,2,4,8]){let b=document.createElement('button');b.type='button';b.textContent=n===1?'Full length':n+' parts';b.className=n===splitCount(focusStrip)?'on':'';b.disabled=!focusStrip;b.onclick=()=>changeSplit(n);el.appendChild(b)}}
@@ -310,7 +377,7 @@ function updateSelection(){
   return 'Tavasci '+base.split(':')[0]+' · Bay '+(Math.floor(g/2)+1)+' · '+(g%2?'right':'left')+' 6 rows';
  });
  $('groupHelp').textContent=sixMode?(groupNames.length?groupNames.slice(0,3).join(' | ')+(groupNames.length>3?' +'+(groupNames.length-3)+' more':''):'Six-row mode ON: tap a narrow group on the map (six groups across each strip).'):'Whole-strip mode: tap a 36-row strip.';
- let count=selected.size;$('heading').textContent=count?count+' selected planting area'+(count===1?'':'s'):'Select planting areas';$('subheading').textContent=count?Array.from(selected).map(k=>k.replace(/^(\d+)[AB]:(\d+):(\d+)$/,(_,out,n,p)=>'Outlet '+out+' · section '+(Number(p)+1)+'/'+n)).join(', '):'Tap one or more sections on the map.';$('selectionCount').textContent=count+' selected';$('save').disabled=!count;$('lengthOpen').disabled=count!==1||sixMode||calibrating;$('clear').disabled=!count;$('rest').disabled=!focusStrip;$('whole').disabled=!focusStrip;$('splitName').textContent=focusStrip?'Tavasci outlet '+focusStrip.replace(/[AB]$/,'')+' · selected 36-row strip':'Tap a strip to choose its length divisions';renderSplits()}
+ let count=selected.size;$('heading').textContent=count?count+' selected planting area'+(count===1?'':'s'):'Select planting areas';$('subheading').textContent=count?Array.from(selected).map(k=>k.replace(/^(\d+)[AB](?:@([\d.]+)-([\d.]+))?/,(_,out,a,b)=>'Outlet '+out+(a?' · '+a+'–'+b+'%':''))).join(', '):'Tap one or more sections on the map.';$('selectionCount').textContent=count+' selected';$('save').disabled=!count;$('lengthOpen').disabled=count!==1||sixMode||calibrating;$('clear').disabled=!count;$('rest').disabled=!focusStrip;$('whole').disabled=!focusStrip;$('splitName').textContent=focusStrip?'Tavasci outlet '+focusStrip.replace(/[AB]$/,'')+' · selected 36-row strip':'Tap a strip to choose its length divisions';renderSplits()}
 function toggle(id,key){if(lengthEditing&&lengthEditing.key!==key)closeLengthEditor();focusStrip=id;if(selected.has(key)){selected.delete(key);editing=null}else{selected.add(key);editing=null}updateSelection();renderSelectionStyles();if(selected.size===1){let pair=opFor([...selected][0]);if(pair){$('date').value=pair[1].date||'';$('variety').value=pair[1].variety||'';$('trays').value=pair[1].trays??'';$('notes').value=pair[1].notes||'';editing=pair[1].areas.length===1?pair[0]:null}}}
 function renderSelectionStyles(){if(sixMode){render();return}document.querySelectorAll('.segment').forEach(b=>{let match=b.getAttribute('aria-label').match(/Tavasci (\d+[AB]) part (\d+) of (\d+)/);if(!match)return;let key=recKey(match[1],Number(match[2])-1,Number(match[3]));b.classList.toggle('active',selected.has(key));if(selected.has(key))b.style.background=pendingRanges[key]&&!opFor(key)?'transparent':'#1689f7a3';else{let r=opFor(key)?.[1];b.style.background=r&&!b.classList.contains('partial')?varietyStyle(r.variety):''}b.setAttribute('aria-pressed',selected.has(key))})}
 function changeSplit(n){if(!focusStrip)return;let id=focusStrip,old=splitCount(id);if(n===old)return;if(keysFor(id).some(k=>opFor(k)||sixChildren(k).some(sk=>opFor(sk)))){alert('This strip contains recorded planting. Export a backup and clear the strip records before changing its divisions.');return}keysFor(id).forEach(k=>selected.delete(k));if(n===1)delete data.splits[id];else data.splits[id]=n;for(const k of Object.keys(data.boundaries)){if(k===id||k.startsWith(id+':')){delete data.boundaries[k];delete pendingRanges[k]}}persist();render()}
@@ -364,20 +431,27 @@ $('lengthFull').onclick=()=>{if(!lengthEditing)return;const g=keyGeometry(length
 $('lengthApply').onclick=()=>{
  if(!lengthEditing)return;
  const {key,start,end}=lengthEditing,g=keyGeometry(key);
- const pair=opFor(key);
- const full=Math.abs(start-g.low)<.01&&Math.abs(end-g.high)<.01;
- if(pair){
-  if(!pair[1].ranges)pair[1].ranges={};
-  if(full)delete pair[1].ranges[key];else pair[1].ranges[key]=[start,end];
-  persist();$('notice').textContent='✓ Planting boundary saved.'; $('mapLengthStatus').textContent='✓ Updated planting boundary saved ('+Math.round(end-start)+'% of row).';
- }else{
-  if(full){delete pendingRanges[key];delete data.boundaries[key]}
-  else {pendingRanges[key]=[start,end];data.boundaries[key]=[start,end]}
-  persist();
-  $('notice').textContent='✓ Planting length boundary saved. Planting details can be added later.';
-  $('mapLengthStatus').textContent='✓ Boundary saved: '+Math.round(start)+'%–'+Math.round(end)+'% ('+Math.round(end-start)+'% of row).';
+ const pair=opFor(key),base=baseKey(key),whole=keyGeometry(base);
+ if(!whole||start>=end)return;
+ // Keep every existing crop area intact; an adjacent area is a separate key.
+ const other=slicesFor(base).filter(p=>p.key!==key&&p.record);
+ if(other.some(p=>start<p.end-.01&&end>p.start+.01)){
+  alert('That boundary overlaps another planting. Adjust it to the available unplanted area.');return;
  }
- closeLengthEditor();render();
+ const nk=sliceKey(base,start,end);
+ if(pair){
+  const op=pair[1];op.areas=op.areas.map(k=>k===key?nk:k);
+  op.ranges=op.ranges||{};delete op.ranges[key];op.ranges[nk]=[start,end];
+  delete data.boundaries[key];
+ }else{
+  delete data.boundaries[key];
+  data.boundaries[nk]=[start,end];
+ }
+ pendingRanges={...data.boundaries};
+ selected.clear();selected.add(nk);focusStrip=base.match(/^\d+[AB]/)?.[0]||focusStrip;
+ persist();closeLengthEditor();render();
+ $('mapLengthStatus').textContent='✓ Saved '+fmtPct(start)+'%–'+fmtPct(end)+'%. Tap the remaining unplanted section to record another variety.';
+ $('notice').textContent='✓ Boundary saved. Other plantings remain unchanged.';
 };
 
 $('rest').onclick=()=>{if(!focusStrip)return;keysFor(focusStrip).flatMap(k=>sixMode?sixChildren(k):[k]).filter(k=>!opFor(k)&&!conflictFor(k)).forEach(k=>selected.add(k));editing=null;render()};
@@ -386,11 +460,11 @@ $('deselect').onclick=()=>{closeLengthEditor();selected.clear();editing=null;ren
 $('form').onsubmit=e=>{e.preventDefault();if(!selected.size)return;let areas=[...selected];if(areas.some(k=>conflictFor(k))){alert('Some selected areas overlap existing whole-strip or six-row plantings. Clear the overlapping records first.');return}const previousRanges={};for(const key of areas){const r=opFor(key)?.[1]?.ranges?.[key];if(r)previousRanges[key]=r;}let existing=new Set(areas.map(k=>opFor(k)?.[0]).filter(Boolean));if(existing.size){if(existing.size>1||!editing||!existing.has(editing)){if(!confirm('Some selected areas already belong to planting operations. Replace their mapped assignment? The original operation totals will be retained for audit, but may need review.'))return}}
 let opid=editing&&data.operations[editing]?editing:uuid();if(editing&&data.operations[editing]){let old=data.operations[editing];old.areas=old.areas.filter(k=>!areas.includes(k));if(!old.areas.length)delete data.operations[editing]}
 for(let id of existing){if(id===opid)continue;let op=data.operations[id];if(op){op.areas=op.areas.filter(k=>!areas.includes(k));if(!op.areas.length)delete data.operations[id]}}
-const ranges={};for(const key of areas){if(pendingRanges[key])ranges[key]=pendingRanges[key];else {const old=previousRanges[key];if(old)ranges[key]=old;}delete data.boundaries[key];}
+const ranges={};for(const key of areas){if(pendingRanges[key])ranges[key]=pendingRanges[key];else {const old=previousRanges[key];if(old)ranges[key]=old;else if(key.includes('@')){const g=keyGeometry(key);if(g)ranges[key]=[g.low,g.high];}}delete data.boundaries[key];}
  data.operations[opid]={date:$('date').value,variety:$('variety').value.trim(),trays:Number($('trays').value)||0,notes:$('notes').value,areas,ranges};pendingRanges={...data.boundaries};closeLengthEditor();persist();selected.clear();editing=null;render();$('notice').textContent='✓ One planting operation saved across '+areas.length+' mapped area(s).'};
 $('clear').onclick=()=>{closeLengthEditor();let keys=[...selected];if(!keys.length)return;if(!confirm('Remove planting assignments for '+keys.length+' selected areas? If part of a larger operation, its original tray total will remain attached to the remaining areas.'))return;for(let [id,op] of Object.entries(data.operations)){op.areas=op.areas.filter(k=>!selected.has(k));if(!op.areas.length)delete data.operations[id]}for(const key of keys){delete data.boundaries[key];delete pendingRanges[key]}selected.clear();editing=null;resetEmptyStrips();persist();render();$('notice').textContent='Selected areas cleared. Empty strips restored to full length.'};
-$('export').onclick=()=>{let blob=new Blob([JSON.stringify({format:'dd-tavasci-test3',...data,calibration},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='tavasci-plantings-build7-5-2-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let incoming=JSON.parse(await f.text());let converted;if(incoming.format==='dd-tavasci-test3'&&incoming.operations)converted={splits:incoming.splits||{},operations:incoming.operations};else if(['dd-tavasci-test1','dd-tavasci-test2'].includes(incoming.format)&&incoming.records)converted=migrate(incoming);else throw Error('Unsupported backup format');if(!confirm('Replace the current planting records with this backup?'))return;data=converted;data.boundaries={...(incoming.boundaries||{})};pendingRanges={...data.boundaries};resetEmptyStrips();if(validCal(incoming.calibration)){calibration=cloneCal(incoming.calibration);localStorage.setItem(CAL_KEY,JSON.stringify(calibration));localStorage.setItem(CAL_BACKUP_KEY,JSON.stringify(calibration))}selected.clear();editing=null;focusStrip=null;persist();render();$('notice').textContent='Backup imported.'}catch(err){alert('Import failed: '+err.message)}e.target.value=''};
+$('export').onclick=()=>{let blob=new Blob([JSON.stringify({format:'dd-tavasci-test3',...data,calibration},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='tavasci-plantings-build7-5-3-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let incoming=JSON.parse(await f.text());let converted;if(incoming.format==='dd-tavasci-test3'&&incoming.operations)converted={splits:incoming.splits||{},operations:incoming.operations};else if(['dd-tavasci-test1','dd-tavasci-test2'].includes(incoming.format)&&incoming.records)converted=migrate(incoming);else throw Error('Unsupported backup format');if(!confirm('Replace the current planting records with this backup?'))return;data=converted;data.boundaries={...(incoming.boundaries||{})};pendingRanges={...data.boundaries};normalizeFractionalAreas();resetEmptyStrips();if(validCal(incoming.calibration)){calibration=cloneCal(incoming.calibration);localStorage.setItem(CAL_KEY,JSON.stringify(calibration));localStorage.setItem(CAL_BACKUP_KEY,JSON.stringify(calibration))}selected.clear();editing=null;focusStrip=null;persist();render();$('notice').textContent='Backup imported.'}catch(err){alert('Import failed: '+err.message)}e.target.value=''};
 $('sixMode').onclick=()=>{closeLengthEditor();sixMode=!sixMode;selected.clear();editing=null;$('sixMode').textContent='Select 6-row groups: '+(sixMode?'On':'Off');$('sixMode').classList.toggle('active',sixMode);render()};
 $('calToggle').onclick=()=>{closeLengthEditor();toggleCalibration(!calibrating)};
 $('calCancel').onclick=()=>toggleCalibration(false);
@@ -400,7 +474,7 @@ $('showGrid').onclick=()=>{showGrid=!showGrid;$('showGrid').textContent='Show gr
 document.querySelectorAll('[data-anchor]').forEach(b=>b.onclick=()=>{activeAnchor=b.dataset.anchor;document.querySelectorAll('[data-anchor]').forEach(x=>x.classList.toggle('selected',x===b));applyCalibration()});
 document.querySelectorAll('[data-nudge]').forEach(b=>b.onclick=()=>{if(!draftCal)return;const r=$('mapbox').getBoundingClientRect(),dir=b.dataset.nudge;draftCal[activeAnchor][0]+=(dir==='left'?-1:dir==='right'?1:0)/r.width;draftCal[activeAnchor][1]+=(dir==='up'?-1:dir==='down'?1:0)/r.height;applyCalibration()});
 window.addEventListener('resize',applyCalibration);
-$('date').value=new Date().toLocaleDateString('en-CA');render();
+$('date').value=new Date().toLocaleDateString('en-CA');normalizeFractionalAreas();persist();render();
 let lastAgeDay=new Date().toDateString();
 function refreshAgeIfDayChanged(){const day=new Date().toDateString();if(day!==lastAgeDay){lastAgeDay=day;renderPlantOverlay()}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAgeIfDayChanged()});

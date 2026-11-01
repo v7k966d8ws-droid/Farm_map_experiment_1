@@ -1,5 +1,5 @@
-DD Produce Tavasci Planting Map — Build 7.5.2
+DD Produce Tavasci Planting Map — Build 7.5.3
 
-Apply length now immediately saves the boundary to the existing localStorage planting data, without requiring a planting variety/date. The partial strip stays visibly blue and the unused portion stays unfilled after applying and after a page refresh. Saving a planting later transfers the boundary to the planting operation. Clearing the selected area removes its standalone boundary. The export/import backup now includes boundaries.
+Fix: individually selectable planting sections along a 36-row strip. Existing fractional planting ranges are migrated to independent keys without deleting their variety/date. Unplanted gaps can be tapped and planted separately. Apply Length stores a boundary without overwriting adjacent planting records.
 
-This remains a Tavasci-only app; irrigation is not connected. Export a backup before updating GitHub Pages.
+Keep the same GitHub Pages URL for existing browser data. Export a backup before upgrading. The original map image and single outlet numbers 1–8 are retained.
