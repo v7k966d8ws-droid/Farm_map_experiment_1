@@ -1,9 +1,10 @@
-DD Produce Tavasci Planting Map Build 7.5.4
+DD Produce Tavasci Planting Map — Build 7.5.5
 
-- One label and combined outline for adjacent matching variety/date planting operations where geometrically possible.
-- Stable, contrasting palette assigned per variety; saved in browser and exported in backup.
-- Variety selection dropdown built from existing plantings and stored varieties, with Add new variety.
-- New area clears previous variety, trays and notes; existing area loads its saved values.
-- Existing planting data, calibration and map retained.
+- Removed the unnecessary left sidebar.
+- Moved the planting details (variety, date, trays, notes and Save) to the top of the right-hand inspector.
+- Compact iPad-friendly inputs; selection controls moved to expandable More selection options below planting form.
+- Kept the original supplied Tavasci field map, existing saved data format, single outlet numbers 1–8 and draggable length tools.
+- Different planting operations remain distinct, including when variety matches but planting date differs.
+- No new irrigation features or other farm structures added.
 
-Export a backup before uploading to GitHub. No irrigation integration in this build.
+Export a backup of your planting records before updating GitHub Pages.
