@@ -40,7 +40,7 @@
 .length-handle .grip{font-size:18px}
 .segment.partial{background:transparent!important}
 
-/* Build 7.5.1: restrained iPadOS-inspired layout, without altering the original field map */
+/* Build 7.5.2: restrained iPadOS-inspired layout, without altering the original field map */
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
 body{background:#f3f5f9;color:#17212c}
 header{background:#fff!important;color:#17212c!important;border-bottom:1px solid #dce2e9;box-shadow:none!important;padding:14px 22px!important}
@@ -69,7 +69,7 @@ input,textarea{border-radius:11px!important;min-height:44px}
 .pending-length-fill{position:absolute;left:0;right:0;background:#1689f7bb;border-top:3px solid #005bd4;border-bottom:3px solid #005bd4;pointer-events:none;z-index:3}
 #lengthEditor{margin:8px 0 12px}
 #lengthEditor .splitrow button{min-height:44px}
-</style></head><body><header><strong>🌱 DD Produce</strong><span class="tag">Tavasci Farm · Build 7.5.1</span></header>
+</style></head><body><header><strong>🌱 DD Produce</strong><span class="tag">Tavasci Farm · Build 7.5.2</span></header>
 <div class="app-shell"><nav class="app-nav" aria-label="Tavasci navigation"><div class="nav-title">Tavasci</div><div class="nav-active">▦ &nbsp; Planting Map</div><div class="nav-caption">Irrigation integration planned</div><div class="nav-caption">Planting records are managed on this map</div></nav><main class="layout"><section class="card"><div class="toolbar"><h2>Tavasci farm map</h2><small>Tap multiple sections to record one planting operation</small></div><div class="cal-row"><button type="button" id="calToggle">⚙ Calibrate grid</button><button type="button" id="showGrid">Show grid: Off</button></div><div id="calibrationPanel"><b>Align planting grid with printed map</b><p class="cal-help">Drag the three orange handles to match the top-left, top-right and bottom-left of the 16-strip grid. The bottom-right corner follows automatically. On Windows, use the mouse; on iPad, drag with your finger. Use the fine adjustment buttons for precision. Save to lock the grid.</p><div class="cal-row"><button type="button" data-anchor="tl">Top left</button><button type="button" data-anchor="tr">Top right</button><button type="button" data-anchor="bl">Bottom left</button></div><div class="cal-row"><button type="button" data-nudge="left">← 1px</button><button type="button" data-nudge="right">1px →</button><button type="button" data-nudge="up">↑ 1px</button><button type="button" data-nudge="down">1px ↓</button></div><div class="cal-row"><button type="button" id="calSave" class="primary">Save & lock</button><button type="button" id="calCancel">Cancel</button><button type="button" id="calReset">Reset alignment</button></div><div class="cal-help" id="calStatus"></div></div><div class="map-length-toolbar" id="mapLengthToolbar"><button type="button" id="lengthOpen" disabled>↕ Adjust planting length</button><span id="mapLengthStatus" role="status">Select a 36-row strip to adjust its length.</span></div><div id="lengthEditor" class="length-editor" hidden>
   <b>Adjust planting length</b>
   <p class="muted">Drag the two wide handles on the selected strip. Top is the railway end; bottom is McLaughlin Road.</p>
@@ -103,12 +103,15 @@ function applyCalibration(){updateCalibrationGeometry()}
 function toggleCalibration(on){calibrating=on;draftCal=on?cloneCal(calibration):null;$('mapbox').classList.toggle('calibrating',on);$('calibrationPanel').classList.toggle('open',on);$('calToggle').textContent=on?'⚙ Calibrating…':'⚙ Calibrate grid';applyCalibration()}
 
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data={splits:{},operations:{}};
+let data={splits:{},operations:{},boundaries:{}};
 const uuid=()=>('op-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8));
 function migrate(source){let out={splits:source.splits||{},operations:{}};for(let [key,r] of Object.entries(source.records||{})){let id=uuid();out.operations[id]={date:r.date,variety:r.variety,trays:Number(r.trays)||0,notes:r.notes||'',areas:[key]}}return out}
 try{let s=JSON.parse(localStorage.getItem(KEY)||'null');if(s?.operations)data=s;else{let p=JSON.parse(localStorage.getItem(PREV)||'null');if(p?.records)data=migrate(p);else{let o=JSON.parse(localStorage.getItem(OLD)||'null');if(o)data=migrate({records:o})}}}catch(e){console.warn(e)}
 let selected=new Set(),focusStrip=null,editing=null,sixMode=false;
 let lengthEditing=null, pendingRanges={};
+// Boundaries for unplanted strips are saved independently of planting records.
+data.boundaries=data.boundaries||{};
+pendingRanges={...data.boundaries};
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 function keyGeometry(key){
  const m=/^(\d+)([AB])(?::(\d+):(\d+))?$/.exec(key);
@@ -269,7 +272,16 @@ function renderVarietyLegend(){let names=[...new Set(Object.values(data.operatio
 function render(){zones.classList.toggle('six-mode',sixMode);zones.innerHTML='<svg id="plantOverlay" viewBox="0 0 1600 1000" preserveAspectRatio="none" aria-hidden="true"></svg><svg id="outletLabels" viewBox="0 0 1600 1000" preserveAspectRatio="none" aria-hidden="true"></svg>';for(let outlet=1;outlet<=8;outlet++)for(let side of ['A','B']){const id=strip(outlet,side),n=splitCount(id),col=document.createElement('div');col.className='zone';let previousOp=null;for(let part=0;part<n;part++){let key=recKey(id,part,n),pair=opFor(key),opid=pair?.[0],r=pair?.[1],nextKey=part+1<n?recKey(id,part+1,n):null,nextOp=nextKey?opFor(nextKey)?.[0]:null,b=document.createElement(sixMode?'div':'button');if(!sixMode)b.type='button';b.className='segment'+(r?' planted':'')+(selected.has(key)?' active':'');if(r){b.style.background=varietyStyle(r.variety);const range=areaRange(r,key),geo=keyGeometry(key);if(geo&&(range[0]>geo.low+.01||range[1]<geo.high-.01)){b.classList.add('partial');b.style.background='transparent';const fill=document.createElement('div');fill.className='partial-fill';fill.style.position='absolute';fill.style.left='0';fill.style.right='0';fill.style.top=(100*(range[0]-geo.low)/(geo.high-geo.low))+'%';fill.style.height=(100*(range[1]-range[0])/(geo.high-geo.low))+'%';fill.style.background=varietyStyle(r.variety);fill.style.pointerEvents='none';b._partialFill=fill;}}b.setAttribute('aria-label',`Tavasci ${id} part ${part+1} of ${n}`);b.setAttribute('aria-pressed',selected.has(key));let joinedBefore=!!opid&&opid===previousOp,joinedAfter=!!opid&&opid===nextOp;if(joinedBefore)b.classList.add('joined-before');if(joinedAfter)b.classList.add('joined-after');let showLabel=!joinedBefore; b.innerHTML=showLabel?`<span class="zlabel">${n>1&&!joinedAfter?'Section '+(part+1):''}</span>${r?`<span class="zdetail">${safe(r.variety)}<br>${safe((r.date||'').slice(8,10)+'/'+(r.date||'').slice(5,7))}</span>`:''}`:'';if(b._partialFill)b.appendChild(b._partialFill);if(b._pendingFill)b.appendChild(b._pendingFill);if(selected.has(key))b.style.background='#1689f7a3';
 if(pendingRanges[key]&&!r&&!sixMode){
  const [ps,pe]=pendingRanges[key],geo=keyGeometry(key);
- if(geo){const fill=document.createElement('div');fill.className='pending-length-fill';fill.style.top=(100*(ps-geo.low)/(geo.high-geo.low))+'%';fill.style.height=(100*(pe-ps)/(geo.high-geo.low))+'%';b._pendingFill=fill;}
+ if(geo){
+  // Explicitly mask the unused portion so the saved boundary is visible even while selected.
+  b.style.background='transparent';
+  const fill=document.createElement('div');fill.className='pending-length-fill';
+  fill.style.position='absolute';fill.style.left='0';fill.style.right='0';
+  fill.style.top=(100*(ps-geo.low)/(geo.high-geo.low))+'%';
+  fill.style.height=(100*(pe-ps)/(geo.high-geo.low))+'%';
+  fill.style.background='#1689f7a3';fill.style.border='2px solid #087cdb';fill.style.boxSizing='border-box';fill.style.pointerEvents='none';
+  b.appendChild(fill);
+ }
 }
 if(sixMode){
  b.classList.remove('planted','active');
@@ -300,8 +312,8 @@ function updateSelection(){
  $('groupHelp').textContent=sixMode?(groupNames.length?groupNames.slice(0,3).join(' | ')+(groupNames.length>3?' +'+(groupNames.length-3)+' more':''):'Six-row mode ON: tap a narrow group on the map (six groups across each strip).'):'Whole-strip mode: tap a 36-row strip.';
  let count=selected.size;$('heading').textContent=count?count+' selected planting area'+(count===1?'':'s'):'Select planting areas';$('subheading').textContent=count?Array.from(selected).map(k=>k.replace(/^(\d+)[AB]:(\d+):(\d+)$/,(_,out,n,p)=>'Outlet '+out+' · section '+(Number(p)+1)+'/'+n)).join(', '):'Tap one or more sections on the map.';$('selectionCount').textContent=count+' selected';$('save').disabled=!count;$('lengthOpen').disabled=count!==1||sixMode||calibrating;$('clear').disabled=!count;$('rest').disabled=!focusStrip;$('whole').disabled=!focusStrip;$('splitName').textContent=focusStrip?'Tavasci outlet '+focusStrip.replace(/[AB]$/,'')+' · selected 36-row strip':'Tap a strip to choose its length divisions';renderSplits()}
 function toggle(id,key){if(lengthEditing&&lengthEditing.key!==key)closeLengthEditor();focusStrip=id;if(selected.has(key)){selected.delete(key);editing=null}else{selected.add(key);editing=null}updateSelection();renderSelectionStyles();if(selected.size===1){let pair=opFor([...selected][0]);if(pair){$('date').value=pair[1].date||'';$('variety').value=pair[1].variety||'';$('trays').value=pair[1].trays??'';$('notes').value=pair[1].notes||'';editing=pair[1].areas.length===1?pair[0]:null}}}
-function renderSelectionStyles(){if(sixMode){render();return}document.querySelectorAll('.segment').forEach(b=>{let match=b.getAttribute('aria-label').match(/Tavasci (\d+[AB]) part (\d+) of (\d+)/);if(!match)return;let key=recKey(match[1],Number(match[2])-1,Number(match[3]));b.classList.toggle('active',selected.has(key));if(selected.has(key))b.style.background='#1689f7a3';else{let r=opFor(key)?.[1];b.style.background=r&&!b.classList.contains('partial')?varietyStyle(r.variety):''}b.setAttribute('aria-pressed',selected.has(key))})}
-function changeSplit(n){if(!focusStrip)return;let id=focusStrip,old=splitCount(id);if(n===old)return;if(keysFor(id).some(k=>opFor(k)||sixChildren(k).some(sk=>opFor(sk)))){alert('This strip contains recorded planting. Export a backup and clear the strip records before changing its divisions.');return}keysFor(id).forEach(k=>selected.delete(k));if(n===1)delete data.splits[id];else data.splits[id]=n;persist();render()}
+function renderSelectionStyles(){if(sixMode){render();return}document.querySelectorAll('.segment').forEach(b=>{let match=b.getAttribute('aria-label').match(/Tavasci (\d+[AB]) part (\d+) of (\d+)/);if(!match)return;let key=recKey(match[1],Number(match[2])-1,Number(match[3]));b.classList.toggle('active',selected.has(key));if(selected.has(key))b.style.background=pendingRanges[key]&&!opFor(key)?'transparent':'#1689f7a3';else{let r=opFor(key)?.[1];b.style.background=r&&!b.classList.contains('partial')?varietyStyle(r.variety):''}b.setAttribute('aria-pressed',selected.has(key))})}
+function changeSplit(n){if(!focusStrip)return;let id=focusStrip,old=splitCount(id);if(n===old)return;if(keysFor(id).some(k=>opFor(k)||sixChildren(k).some(sk=>opFor(sk)))){alert('This strip contains recorded planting. Export a backup and clear the strip records before changing its divisions.');return}keysFor(id).forEach(k=>selected.delete(k));if(n===1)delete data.splits[id];else data.splits[id]=n;for(const k of Object.keys(data.boundaries)){if(k===id||k.startsWith(id+':')){delete data.boundaries[k];delete pendingRanges[k]}}persist();render()}
 
 function closeLengthEditor(){lengthEditing=null;$('lengthEditor').hidden=true;document.getElementById('lengthDrag')?.remove();}
 function drawLengthEditor(){
@@ -344,7 +356,7 @@ $('lengthOpen').onclick=()=>{
  const existing=opFor(key)?.[1];
  const [start,end]=pendingRanges[key]||areaRange(existing,key);
  lengthEditing={key,start,end};$('lengthEditor').hidden=false;
- $('mapLengthStatus').textContent='Drag START and FINISH handles on the map, then tap Apply length.'; $('lengthHint').textContent=existing?'Apply length saves the new boundary to this existing planting record.':'Apply length, then enter the planting details and save the operation below.';
+ $('mapLengthStatus').textContent='Drag START and FINISH handles on the map, then tap Apply length.'; $('lengthHint').textContent=existing?'Apply length saves the new boundary to this existing planting record.':'Apply length saves the boundary immediately, even without planting details.';
  drawLengthEditor();
 };
 $('lengthCancel').onclick=closeLengthEditor;
@@ -359,23 +371,26 @@ $('lengthApply').onclick=()=>{
   if(full)delete pair[1].ranges[key];else pair[1].ranges[key]=[start,end];
   persist();$('notice').textContent='✓ Planting boundary saved.'; $('mapLengthStatus').textContent='✓ Updated planting boundary saved ('+Math.round(end-start)+'% of row).';
  }else{
-  if(full)delete pendingRanges[key];else pendingRanges[key]=[start,end];
-  $('notice').textContent='Length applied. Enter planting details and tap Save planting operation.'; $('mapLengthStatus').textContent='✓ Length applied ('+Math.round(end-start)+'% of row). Save the planting details to record it.';
+  if(full){delete pendingRanges[key];delete data.boundaries[key]}
+  else {pendingRanges[key]=[start,end];data.boundaries[key]=[start,end]}
+  persist();
+  $('notice').textContent='✓ Planting length boundary saved. Planting details can be added later.';
+  $('mapLengthStatus').textContent='✓ Boundary saved: '+Math.round(start)+'%–'+Math.round(end)+'% ('+Math.round(end-start)+'% of row).';
  }
  closeLengthEditor();render();
 };
 
 $('rest').onclick=()=>{if(!focusStrip)return;keysFor(focusStrip).flatMap(k=>sixMode?sixChildren(k):[k]).filter(k=>!opFor(k)&&!conflictFor(k)).forEach(k=>selected.add(k));editing=null;render()};
 $('whole').onclick=()=>{if(!focusStrip)return;keysFor(focusStrip).flatMap(k=>sixMode?sixChildren(k):[k]).filter(k=>!conflictFor(k)).forEach(k=>selected.add(k));editing=null;render()};
-$('deselect').onclick=()=>{closeLengthEditor();pendingRanges={};selected.clear();editing=null;render()};
+$('deselect').onclick=()=>{closeLengthEditor();selected.clear();editing=null;render()};
 $('form').onsubmit=e=>{e.preventDefault();if(!selected.size)return;let areas=[...selected];if(areas.some(k=>conflictFor(k))){alert('Some selected areas overlap existing whole-strip or six-row plantings. Clear the overlapping records first.');return}const previousRanges={};for(const key of areas){const r=opFor(key)?.[1]?.ranges?.[key];if(r)previousRanges[key]=r;}let existing=new Set(areas.map(k=>opFor(k)?.[0]).filter(Boolean));if(existing.size){if(existing.size>1||!editing||!existing.has(editing)){if(!confirm('Some selected areas already belong to planting operations. Replace their mapped assignment? The original operation totals will be retained for audit, but may need review.'))return}}
 let opid=editing&&data.operations[editing]?editing:uuid();if(editing&&data.operations[editing]){let old=data.operations[editing];old.areas=old.areas.filter(k=>!areas.includes(k));if(!old.areas.length)delete data.operations[editing]}
 for(let id of existing){if(id===opid)continue;let op=data.operations[id];if(op){op.areas=op.areas.filter(k=>!areas.includes(k));if(!op.areas.length)delete data.operations[id]}}
-const ranges={};for(const key of areas){if(pendingRanges[key])ranges[key]=pendingRanges[key];else {const old=previousRanges[key];if(old)ranges[key]=old;}}
- data.operations[opid]={date:$('date').value,variety:$('variety').value.trim(),trays:Number($('trays').value)||0,notes:$('notes').value,areas,ranges};pendingRanges={};closeLengthEditor();persist();selected.clear();editing=null;render();$('notice').textContent='✓ One planting operation saved across '+areas.length+' mapped area(s).'};
-$('clear').onclick=()=>{closeLengthEditor();let keys=[...selected];if(!keys.length)return;if(!confirm('Remove planting assignments for '+keys.length+' selected areas? If part of a larger operation, its original tray total will remain attached to the remaining areas.'))return;for(let [id,op] of Object.entries(data.operations)){op.areas=op.areas.filter(k=>!selected.has(k));if(!op.areas.length)delete data.operations[id]}selected.clear();editing=null;resetEmptyStrips();persist();render();$('notice').textContent='Selected areas cleared. Empty strips restored to full length.'};
-$('export').onclick=()=>{let blob=new Blob([JSON.stringify({format:'dd-tavasci-test3',...data,calibration},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='tavasci-plantings-build7-4-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let incoming=JSON.parse(await f.text());let converted;if(incoming.format==='dd-tavasci-test3'&&incoming.operations)converted={splits:incoming.splits||{},operations:incoming.operations};else if(['dd-tavasci-test1','dd-tavasci-test2'].includes(incoming.format)&&incoming.records)converted=migrate(incoming);else throw Error('Unsupported backup format');if(!confirm('Replace the current planting records with this backup?'))return;data=converted;resetEmptyStrips();if(validCal(incoming.calibration)){calibration=cloneCal(incoming.calibration);localStorage.setItem(CAL_KEY,JSON.stringify(calibration));localStorage.setItem(CAL_BACKUP_KEY,JSON.stringify(calibration))}selected.clear();editing=null;focusStrip=null;persist();render();$('notice').textContent='Backup imported.'}catch(err){alert('Import failed: '+err.message)}e.target.value=''};
+const ranges={};for(const key of areas){if(pendingRanges[key])ranges[key]=pendingRanges[key];else {const old=previousRanges[key];if(old)ranges[key]=old;}delete data.boundaries[key];}
+ data.operations[opid]={date:$('date').value,variety:$('variety').value.trim(),trays:Number($('trays').value)||0,notes:$('notes').value,areas,ranges};pendingRanges={...data.boundaries};closeLengthEditor();persist();selected.clear();editing=null;render();$('notice').textContent='✓ One planting operation saved across '+areas.length+' mapped area(s).'};
+$('clear').onclick=()=>{closeLengthEditor();let keys=[...selected];if(!keys.length)return;if(!confirm('Remove planting assignments for '+keys.length+' selected areas? If part of a larger operation, its original tray total will remain attached to the remaining areas.'))return;for(let [id,op] of Object.entries(data.operations)){op.areas=op.areas.filter(k=>!selected.has(k));if(!op.areas.length)delete data.operations[id]}for(const key of keys){delete data.boundaries[key];delete pendingRanges[key]}selected.clear();editing=null;resetEmptyStrips();persist();render();$('notice').textContent='Selected areas cleared. Empty strips restored to full length.'};
+$('export').onclick=()=>{let blob=new Blob([JSON.stringify({format:'dd-tavasci-test3',...data,calibration},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='tavasci-plantings-build7-5-2-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let incoming=JSON.parse(await f.text());let converted;if(incoming.format==='dd-tavasci-test3'&&incoming.operations)converted={splits:incoming.splits||{},operations:incoming.operations};else if(['dd-tavasci-test1','dd-tavasci-test2'].includes(incoming.format)&&incoming.records)converted=migrate(incoming);else throw Error('Unsupported backup format');if(!confirm('Replace the current planting records with this backup?'))return;data=converted;data.boundaries={...(incoming.boundaries||{})};pendingRanges={...data.boundaries};resetEmptyStrips();if(validCal(incoming.calibration)){calibration=cloneCal(incoming.calibration);localStorage.setItem(CAL_KEY,JSON.stringify(calibration));localStorage.setItem(CAL_BACKUP_KEY,JSON.stringify(calibration))}selected.clear();editing=null;focusStrip=null;persist();render();$('notice').textContent='Backup imported.'}catch(err){alert('Import failed: '+err.message)}e.target.value=''};
 $('sixMode').onclick=()=>{closeLengthEditor();sixMode=!sixMode;selected.clear();editing=null;$('sixMode').textContent='Select 6-row groups: '+(sixMode?'On':'Off');$('sixMode').classList.toggle('active',sixMode);render()};
 $('calToggle').onclick=()=>{closeLengthEditor();toggleCalibration(!calibrating)};
 $('calCancel').onclick=()=>toggleCalibration(false);
